@@ -1,5 +1,7 @@
 {
-  "customizations": {
+	"name": "Secure Code Game Devcontainer",
+	"image": "mcr.microsoft.com/devcontainers/base:bookworm",
+	"customizations": {
     "vscode": {
       "extensions": [
         "ms-python.python",
@@ -11,7 +13,7 @@
       ]
     }
   },
-  "postCreateCommand": "pip install -r requirements.txt && npm install --prefix Season-3/",
+  "postCreateCommand": "sudo apt update -y && sudo apt install -y libldap2-dev libsasl2-dev && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt && npm install -g npm@11.5.1 && npm install -g @anthropic-ai/claude-code && npm install --prefix Season-3/",
   "features": {
     "ghcr.io/devcontainers/features/python:1.7.1": {},
     "ghcr.io/devcontainers/features/node:1": {}
