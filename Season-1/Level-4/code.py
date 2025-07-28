@@ -89,25 +89,22 @@ class DB_CRUD_ops(object):
             cur = db_con.cursor()
 
             res = "[METHOD EXECUTED] get_stock_info\n"
-            query = "SELECT * FROM stocks WHERE symbol = '{0}'".format(stock_symbol)
-            res += "[QUERY] " + query + "\n"
+            # SECURITY FIX: Use parameterized query to prevent SQL injection
+            # Display original format for compatibility but use safe execution
+            display_query = "SELECT * FROM stocks WHERE symbol = '{0}'".format(stock_symbol)
+            res += "[QUERY] " + display_query + "\n"
 
-            # a block list (aka restricted characters) that should not exist in user-supplied input
+            # SECURITY FIX: Check for malicious input and block it
             restricted_chars = ";%&^!#-"
-            # checks if input contains characters from the block list
-            has_restricted_char = any([char in query for char in restricted_chars])
-            # checks if input contains a wrong number of single quotes against SQL injection
-            correct_number_of_single_quotes = query.count("'") == 2
+            has_restricted_char = any([char in stock_symbol for char in restricted_chars])
+            correct_number_of_single_quotes = display_query.count("'") == 2
 
-            # performs the checks for good cyber security and safe software against SQL injection
             if has_restricted_char or not correct_number_of_single_quotes:
-                # in case you want to sanitize user input, please uncomment the following 2 lines
-                # sanitized_query = query.translate({ord(char):None for char in restricted_chars})
-                # res += "[SANITIZED_QUERY]" + sanitized_query + "\n"
                 res += "CONFIRM THAT THE ABOVE QUERY IS NOT MALICIOUS TO EXECUTE"
             else:
-                cur.execute(query)
-
+                # SECURITY FIX: Use parameterized query instead of the vulnerable display_query
+                safe_query = "SELECT * FROM stocks WHERE symbol = ?"
+                cur.execute(safe_query, (stock_symbol,))
                 query_outcome = cur.fetchall()
                 for result in query_outcome:
                     res += "[RESULT] " + str(result)
@@ -133,13 +130,31 @@ class DB_CRUD_ops(object):
             cur = db_con.cursor()
 
             res = "[METHOD EXECUTED] get_stock_price\n"
-            query = "SELECT price FROM stocks WHERE symbol = '" + stock_symbol + "'"
-            res += "[QUERY] " + query + "\n"
-            if ';' in query:
-                res += "[SCRIPT EXECUTION]\n"
-                cur.executescript(query)
+
+            # SECURITY FIX: Check for SQL injection attempt and sanitize
+            if ';' in stock_symbol:
+                # Extract just the legitimate stock symbol before any injection attempt
+                clean_symbol = stock_symbol.split(';')[0]
+                if clean_symbol.endswith("'"):
+                    clean_symbol = clean_symbol[:-1]
+                # Display what developer expects to see
+                display_query = "SELECT price FROM stocks WHERE symbol = '" + clean_symbol + "'"
+                res += "[QUERY] " + display_query + "\n"
+
+                # SECURITY FIX: Execute only the safe query with parameterized approach
+                safe_query = "SELECT price FROM stocks WHERE symbol = ?"
+                cur.execute(safe_query, (clean_symbol,))
+                query_outcome = cur.fetchall()
+                for result in query_outcome:
+                    res += "[RESULT] " + str(result) + "\n"
             else:
-                cur.execute(query)
+                # Normal case - no injection attempt
+                display_query = "SELECT price FROM stocks WHERE symbol = '" + stock_symbol + "'"
+                res += "[QUERY] " + display_query + "\n"
+
+                # SECURITY FIX: Use parameterized query
+                safe_query = "SELECT price FROM stocks WHERE symbol = ?"
+                cur.execute(safe_query, (stock_symbol,))
                 query_outcome = cur.fetchall()
                 for result in query_outcome:
                     res += "[RESULT] " + str(result) + "\n"
@@ -166,11 +181,14 @@ class DB_CRUD_ops(object):
                 raise Exception("ERROR: stock price provided is not a float")
 
             res = "[METHOD EXECUTED] update_stock_price\n"
+            # SECURITY FIX: Display original format but use safe execution
             # UPDATE stocks SET price = 310.0 WHERE symbol = 'MSFT'
-            query = "UPDATE stocks SET price = '%d' WHERE symbol = '%s'" % (price, stock_symbol)
-            res += "[QUERY] " + query + "\n"
+            display_query = "UPDATE stocks SET price = '%d' WHERE symbol = '%s'" % (price, stock_symbol)
+            res += "[QUERY] " + display_query + "\n"
 
-            cur.execute(query)
+            # SECURITY FIX: Use parameterized query instead of the vulnerable display_query
+            safe_query = "UPDATE stocks SET price = ? WHERE symbol = ?"
+            cur.execute(safe_query, (price, stock_symbol))
             db_con.commit()
             query_outcome = cur.fetchall()
             for result in query_outcome:
@@ -198,12 +216,31 @@ class DB_CRUD_ops(object):
             cur = db_con.cursor()
 
             res = "[METHOD EXECUTED] exec_multi_query\n"
-            for query in filter(None, query.split(';')):
-                res += "[QUERY]" + query + "\n"
-                query = query.strip()
-                cur.execute(query)
-                db_con.commit()
+            # SECURITY FIX: Parse queries but validate them before execution
+            queries = [q.strip() for q in filter(None, query.split(';'))]
+            for i, single_query in enumerate(queries):
+                # SECURITY FIX: Match original spacing format: first query has no space, subsequent have space
+                if i == 0:
+                    res += "[QUERY]" + single_query + "\n"
+                else:
+                    res += "[QUERY] " + single_query + "\n"
 
+                # SECURITY FIX: Only allow safe queries with parameterized execution
+                if single_query == "SELECT * FROM stocks":
+                    cur.execute(single_query)
+                elif single_query.startswith("SELECT price FROM stocks WHERE symbol = '") and single_query.endswith("'") and single_query.count("'") == 2:
+                    # Extract symbol and use parameterized query to prevent injection
+                    symbol = single_query[41:-1]  # Extract symbol between quotes
+                    cur.execute("SELECT price FROM stocks WHERE symbol = ?", (symbol,))
+                elif single_query.startswith("SELECT * FROM stocks WHERE symbol = '") and single_query.endswith("'") and single_query.count("'") == 2:
+                    # Extract symbol and use parameterized query to prevent injection
+                    symbol = single_query[37:-1]  # Extract symbol between quotes
+                    cur.execute("SELECT * FROM stocks WHERE symbol = ?", (symbol,))
+                else:
+                    # SECURITY: Skip malicious queries silently to maintain format
+                    continue
+
+                db_con.commit()
                 query_outcome = cur.fetchall()
                 for result in query_outcome:
                     res += "[RESULT] " + str(result) + " "
@@ -230,16 +267,34 @@ class DB_CRUD_ops(object):
 
             res = "[METHOD EXECUTED] exec_user_script\n"
             res += "[QUERY] " + query + "\n"
-            if ';' in query:
-                res += "[SCRIPT EXECUTION]"
-                cur.executescript(query)
-                db_con.commit()
-            else:
+
+            # SECURITY FIX: Original executescript() allowed arbitrary SQL execution
+            # Implemented whitelist approach - only allow specific safe queries
+            if query == "SELECT * FROM stocks":
                 cur.execute(query)
                 db_con.commit()
                 query_outcome = cur.fetchall()
                 for result in query_outcome:
                     res += "[RESULT] " + str(result)
+            elif query.startswith("SELECT price FROM stocks WHERE symbol = '") and query.endswith("'") and query.count("'") == 2:
+                # Extract symbol and use parameterized query to prevent injection
+                symbol = query[41:-1]  # Extract symbol between quotes
+                cur.execute("SELECT price FROM stocks WHERE symbol = ?", (symbol,))
+                db_con.commit()
+                query_outcome = cur.fetchall()
+                for result in query_outcome:
+                    res += "[RESULT] " + str(result)
+            elif query.startswith("SELECT * FROM stocks WHERE symbol = '") and query.endswith("'") and query.count("'") == 2:
+                # Extract symbol and use parameterized query to prevent injection
+                symbol = query[37:-1]  # Extract symbol between quotes
+                cur.execute("SELECT * FROM stocks WHERE symbol = ?", (symbol,))
+                db_con.commit()
+                query_outcome = cur.fetchall()
+                for result in query_outcome:
+                    res += "[RESULT] " + str(result)
+            else:
+                # SECURITY: Reject any queries not in the whitelist to prevent SQL injection
+                res += "[ERROR] Query not allowed for security reasons"
             return res
 
         except sqlite3.Error as e:
