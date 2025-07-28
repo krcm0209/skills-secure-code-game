@@ -3,7 +3,6 @@
 # This is the last level of our first season, good luck!
 
 import binascii
-import random
 import secrets
 import hashlib
 import os
@@ -17,12 +16,16 @@ class Random_generator:
     'abcdefghijklmnopqrstuvwxyz'
     'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
     )):
-        return ''.join(random.choice(alphabet) for _ in range(length))
+        # SECURITY FIX: Use secrets module instead of random for cryptographically secure token generation
+        # The random module uses a pseudorandom generator unsuitable for security purposes
+        return ''.join(secrets.choice(alphabet) for _ in range(length))
 
     # generates salt
     def generate_salt(self, rounds=12):
-        salt = ''.join(str(random.randint(0, 9)) for _ in range(21)) + '.'
-        return f'$2b${rounds}${salt}'.encode()
+        # SECURITY FIX: Use bcrypt's built-in secure salt generation instead of weak random generation
+        # Original implementation used weak randomness and limited character set (only digits)
+        # bcrypt.gensalt() provides cryptographically secure salts with full entropy
+        return bcrypt.gensalt(rounds)
 
 class SHA256_hasher:
 
@@ -51,8 +54,14 @@ class MD5_hasher:
 # a collection of sensitive secrets necessary for the software to operate
 PRIVATE_KEY = os.environ.get('PRIVATE_KEY')
 PUBLIC_KEY = os.environ.get('PUBLIC_KEY')
-SECRET_KEY = 'TjWnZr4u7x!A%D*G-KaPdSgVkXp2s5v8'
-PASSWORD_HASHER = 'MD5_hasher'
+# SECURITY FIX: Load SECRET_KEY from environment variable with secure fallback
+# Hardcoded secrets in source code are a critical security vulnerability
+# Anyone with access to the code can see and use the secret key
+# If no environment variable is set, generate a secure random key
+SECRET_KEY = os.environ.get('SECRET_KEY') or secrets.token_urlsafe(32)
+# SECURITY FIX: Use SHA256_hasher as default instead of the cryptographically broken MD5_hasher
+# MD5 is vulnerable to collision attacks and should not be used for password hashing
+PASSWORD_HASHER = 'SHA256_hasher'
 
 
 # Contribute new levels to the game in 3 simple steps!
