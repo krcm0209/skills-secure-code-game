@@ -112,6 +112,47 @@ class TaxPayer:
 
         return True
 
+    def _sanitize_path(self, user_path):
+        """
+        SECURITY FIX: Strict path sanitization following security best practices
+
+        Implements the recommended security rules:
+        - No more than a single "." character
+        - No directory separators ("/" or "\")
+        - No path traversal sequences
+        - Use allowlist of known good patterns
+        """
+        if not user_path or not isinstance(user_path, str):
+            return None
+
+        # Block null bytes
+        if '\x00' in user_path:
+            return None
+
+        # Block directory separators entirely
+        if '/' in user_path or '\\' in user_path:
+            return None
+
+        # Allow only a single dot (for file extensions)
+        if user_path.count('.') > 1:
+            return None
+
+        # Block any path traversal attempts
+        if '..' in user_path:
+            return None
+
+        # Block hidden files and system files
+        if user_path.startswith('.'):
+            return None
+
+        # Allowlist: only alphanumeric, underscore, hyphen, and single dot
+        import string
+        allowed_chars = string.ascii_letters + string.digits + '_-.'
+        if not all(c in allowed_chars for c in user_path):
+            return None
+
+        return user_path
+
     def _safe_file_check(self, file_path, allowed_base_dir):
         """
         SECURITY FIX: Safely check if file exists within allowed directory
@@ -168,19 +209,33 @@ class TaxPayer:
         if '..' in path or path.startswith('/'):
             return None
 
+        # SECURITY FIX: Additional validation - reject paths with suspicious patterns
+        if any(char in path for char in ['\\', '\x00']) or path.count('.') > 2:
+            return None
+
         # SECURITY FIX: Build secure path within base directory (matching original test expectation)
-        prof_picture_path = os.path.join(self.base_dir, path)
+        try:
+            prof_picture_path = os.path.join(self.base_dir, path)
+            # Resolve and validate the path stays within base directory
+            resolved_path = os.path.realpath(prof_picture_path)
+            resolved_base = os.path.realpath(self.base_dir)
 
-        # SECURITY FIX: Use secure file operations
-        if not self._safe_file_check(prof_picture_path, self.base_dir):
+            if not resolved_path.startswith(resolved_base + os.sep) and resolved_path != resolved_base:
+                return None
+
+            # Check file existence directly with the validated path
+            if not os.path.isfile(resolved_path):
+                return None
+
+            # Read file to verify
+            with open(resolved_path, 'rb') as pic:
+                _ = bytearray(pic.read())
+
+            # assume that image is returned on screen after this
+            return prof_picture_path
+
+        except (OSError, IOError, PermissionError):
             return None
-
-        picture_data = self._safe_file_read(prof_picture_path, self.base_dir)
-        if picture_data is None:
-            return None
-
-        # assume that image is returned on screen after this
-        return prof_picture_path
 
     # returns the path of an attached tax form that every user should submit
     def get_tax_form_attachment(self, path=None):
@@ -215,15 +270,28 @@ class TaxPayer:
             # For relative paths, join with tax forms directory
             tax_form_path = os.path.join(self.tax_forms_dir, path)
 
-        # SECURITY FIX: Use secure file operations
-        base_dir_for_check = self.base_dir if os.path.isabs(tax_form_path) else self.tax_forms_dir
+        # SECURITY FIX: Direct secure file operations without helper methods
+        try:
+            # Resolve and validate the path stays within allowed directory
+            resolved_path = os.path.realpath(tax_form_path)
+            if os.path.isabs(tax_form_path):
+                resolved_base = os.path.realpath(self.base_dir)
+            else:
+                resolved_base = os.path.realpath(self.tax_forms_dir)
 
-        if not self._safe_file_check(tax_form_path, base_dir_for_check):
+            if not resolved_path.startswith(resolved_base + os.sep) and resolved_path != resolved_base:
+                return None
+
+            # Check file existence directly with the validated path
+            if not os.path.isfile(resolved_path):
+                return None
+
+            # Read file to verify accessibility
+            with open(resolved_path, 'rb') as form:
+                _ = bytearray(form.read())
+
+            # assume that tax data is returned on screen after this
+            return tax_form_path
+
+        except (OSError, IOError, PermissionError):
             return None
-
-        form_data = self._safe_file_read(tax_form_path, base_dir_for_check)
-        if form_data is None:
-            return None
-
-        # assume that tax data is returned on screen after this
-        return tax_form_path
