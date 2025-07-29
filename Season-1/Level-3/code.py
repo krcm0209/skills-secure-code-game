@@ -112,6 +112,42 @@ class TaxPayer:
 
         return True
 
+    def _safe_file_check(self, file_path, allowed_base_dir):
+        """
+        SECURITY FIX: Safely check if file exists within allowed directory
+        """
+        try:
+            resolved_path = os.path.realpath(file_path)
+            resolved_base = os.path.realpath(allowed_base_dir)
+
+            # Ensure path is within allowed directory
+            if not resolved_path.startswith(resolved_base + os.sep) and resolved_path != resolved_base:
+                return False
+
+            return os.path.isfile(resolved_path)
+        except (OSError, ValueError):
+            return False
+
+    def _safe_file_read(self, file_path, allowed_base_dir):
+        """
+        SECURITY FIX: Safely read file within allowed directory
+        """
+        try:
+            resolved_path = os.path.realpath(file_path)
+            resolved_base = os.path.realpath(allowed_base_dir)
+
+            # Ensure path is within allowed directory
+            if not resolved_path.startswith(resolved_base + os.sep) and resolved_path != resolved_base:
+                return None
+
+            if not os.path.isfile(resolved_path):
+                return None
+
+            with open(resolved_path, 'rb') as f:
+                return bytearray(f.read())
+        except (OSError, IOError, PermissionError):
+            return None
+
     # returns the path of an optional profile picture that users can set
     def get_prof_picture(self, path=None):
         """
@@ -132,25 +168,19 @@ class TaxPayer:
         if '..' in path or path.startswith('/'):
             return None
 
-        # SECURITY FIX: Build secure path within base directory
+        # SECURITY FIX: Build secure path within base directory (matching original test expectation)
         prof_picture_path = os.path.join(self.base_dir, path)
 
-        try:
-            # SECURITY FIX: Additional file existence and readability check
-            if not os.path.isfile(prof_picture_path):
-                return None
-
-            # SECURITY FIX: Secure file reading with proper error handling
-            with open(prof_picture_path, 'rb') as pic:
-                picture = bytearray(pic.read())
-
-            # assume that image is returned on screen after this
-            return prof_picture_path
-
-        except (OSError, IOError, PermissionError):
-            # SECURITY FIX: Generic error handling to prevent information disclosure
-            # Original code would expose system paths and file existence through exceptions
+        # SECURITY FIX: Use secure file operations
+        if not self._safe_file_check(prof_picture_path, self.base_dir):
             return None
+
+        picture_data = self._safe_file_read(prof_picture_path, self.base_dir)
+        if picture_data is None:
+            return None
+
+        # assume that image is returned on screen after this
+        return prof_picture_path
 
     # returns the path of an attached tax form that every user should submit
     def get_tax_form_attachment(self, path=None):
@@ -185,20 +215,15 @@ class TaxPayer:
             # For relative paths, join with tax forms directory
             tax_form_path = os.path.join(self.tax_forms_dir, path)
 
-        try:
-            # SECURITY FIX: File existence and accessibility validation
-            if not os.path.isfile(tax_form_path):
-                return None
+        # SECURITY FIX: Use secure file operations
+        base_dir_for_check = self.base_dir if os.path.isabs(tax_form_path) else self.tax_forms_dir
 
-            # SECURITY FIX: Secure file reading with proper error handling
-            with open(tax_form_path, 'rb') as form:
-                # Read and validate file content
-                _ = bytearray(form.read())
-
-            # assume that tax data is returned on screen after this
-            return tax_form_path
-
-        except (OSError, IOError, PermissionError):
-            # SECURITY FIX: Generic error handling to prevent information disclosure
-            # Original code would expose detailed file system information through exceptions
+        if not self._safe_file_check(tax_form_path, base_dir_for_check):
             return None
+
+        form_data = self._safe_file_read(tax_form_path, base_dir_for_check)
+        if form_data is None:
+            return None
+
+        # assume that tax data is returned on screen after this
+        return tax_form_path
