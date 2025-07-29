@@ -347,9 +347,9 @@ class TaxPayer:
         
         # The secure path is now completely sanitized and contains no user input
         try:
-            if not os.path.isfile(secure_path):
+            if not self._safe_file_check(secure_path, self.tax_forms_dir):
                 return None
-                
+            
             with open(secure_path, 'rb') as form:
                 _ = bytearray(form.read())
 
