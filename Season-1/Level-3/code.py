@@ -167,18 +167,23 @@ class TaxPayer:
 
         # SECURITY FIX: Secure validation for required tax form
         if not path:
-            # SECURITY FIX: Generic error message to prevent information disclosure
             return None
 
-        # SECURITY FIX: Block path traversal attempts
+        # SECURITY FIX: Block dangerous path traversal sequences
         if '..' in path:
             return None
 
-        # SECURITY FIX: Build secure path - use provided path directly if absolute, otherwise join with base
+        # SECURITY FIX: Handle absolute vs relative paths securely
         if os.path.isabs(path):
+            # For absolute paths, ensure they're within the base directory
+            resolved_path = os.path.realpath(path)
+            base_path = os.path.realpath(self.base_dir)
+            if not resolved_path.startswith(base_path + os.sep) and resolved_path != base_path:
+                return None
             tax_form_path = path
         else:
-            tax_form_path = os.path.join(self.base_dir, path)
+            # For relative paths, join with tax forms directory
+            tax_form_path = os.path.join(self.tax_forms_dir, path)
 
         try:
             # SECURITY FIX: File existence and accessibility validation
